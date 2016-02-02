@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,33 +18,45 @@ import (
 )
 
 func main() {
-	start := time.Now()
-	ch := make(chan string)
-	for _, url := range os.Args[1:] {
-		go fetch(url, ch) // start a goroutine
+
+	file, err := os.Open("data/top-1m.csv")
+	if err != nil {
+		fmt.Println("Error: %v", err)
+		return
 	}
-	for range os.Args[1:] {
-		fmt.Println(<-ch) // receive from channel ch
+
+	reader := csv.NewReader(file)
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Println("Error: ", err)
+			return
+		}
+		url := fmt.Sprintf("http://www.%s", line[1])
+		go fetch(url)
 	}
-	fmt.Printf("%.2fs elapsed\n", time.Since(start).Seconds())
+
+	file.Close()
 }
 
-func fetch(url string, ch chan<- string) {
+func fetch(url string) {
 	start := time.Now()
 	resp, err := http.Get(url)
 	if err != nil {
-		ch <- fmt.Sprint(err) // send to channel ch
 		return
 	}
 
 	nbytes, err := io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close() // don't leak resources
+	resp.Body.Close()
 	if err != nil {
-		ch <- fmt.Sprintf("while reading %s: %v", url, err)
+		fmt.Printf("Error %s: %v\n", url, err)
 		return
 	}
+
 	secs := time.Since(start).Seconds()
-	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, url)
+	fmt.Printf("%s %7d %.2fs\n", url, nbytes, secs)
 }
 
 //!-
